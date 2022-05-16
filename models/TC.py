@@ -60,15 +60,19 @@ class TC(nn.Module):
 
         pred = torch.empty((self.timestep, batch, self.num_channels)).float().to(self.device)
        
-        
+        afterpred = torch.empty((self.timestep, batch, self.num_channels)).float().to(self.device)
         for i in np.arange(0, self.timestep):
             linear = self.Wk[i]
             pred[i] = linear(c_t)
+            
         for i in np.arange(0, self.timestep):
             total = torch.mm(encode_samples[i], torch.transpose(pred[i], 0, 1))
             nce += torch.sum(torch.diag(self.lsoftmax(total)))
         
-
+        #aftpred = self.seq_transformer(pred)
+        afterpred = self.seq_transformer(pred)
+        
+        #이 부분을 추가 하면 pFD 전이학습 A->B의 성능이 오르나, HAR, sleepEDF 데이터셋에 대해선 성능향상이 크지않음.
         
         ###backward processing
         
@@ -86,20 +90,21 @@ class TC(nn.Module):
         pred_back = torch.empty((self.timestep, batch, self.num_channels)).float().to(self.device)
 
         for i in np.arange(0,self.timestep):
-            linear_back = self.Wk[i]
-            pred_back[i] = linear_back(c_back)
+            linear_back = self.Wk[self.timestep-1-i]
+            pred_back[i] = linear_back(afterpred[i])#linear_back(c_back)
         for i in np.arange(0,self.timestep):
             total = torch.mm(encode_samples_back[i],torch.transpose(pred_back[i],0,1))
+            #total = torch.mm(afterpred, encode_samples_back[i])
             nce += torch.sum(torch.diag(self.lsoftmax(total)))
         ### for - back ward processing
         full_seq = z_aug1[:, t_samples - self.timestep: t_samples + self.timestep, :]
         c_f = self.seq_transformer(full_seq)
         
-
+        
         #c_full = (c_back + c_t) /2
         #c_full = torch.cat([c_t,c_back],dim = -2)
         
-
-
-        nce /= -1. * batch * self.timestep * 2
+        
+        
+        nce /= -1. * batch * self.timestep *2
         return nce, self.projection_head(c_f)
