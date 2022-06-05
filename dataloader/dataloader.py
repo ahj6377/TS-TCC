@@ -36,7 +36,7 @@ class Load_Dataset(Dataset):
         if self.training_mode == "self_supervised":
             return self.x_data[index], self.y_data[index], self.aug1[index], self.aug2[index]
         else:
-            return self.x_data[index], self.y_data[index], self.x_data[index], self.x_data[index], self.x_data[index]
+            return self.x_data[index], self.y_data[index], self.x_data[index], self.x_data[index]
 
     def __len__(self):
         return self.len
