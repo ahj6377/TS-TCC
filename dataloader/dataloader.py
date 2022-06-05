@@ -30,15 +30,13 @@ class Load_Dataset(Dataset):
 
         self.len = X_train.shape[0]
         if training_mode == "self_supervised":  # no need to apply Augmentations in other modes
-            #self.aug1, self.aug2 = DataTransform(self.x_data, config)
-            self.aug1, self.aug3, self.aug2 = DataTransform(self.x_data, config)
+            self.aug1, self.aug2 = DataTransform(self.x_data, config)
 
     def __getitem__(self, index):
         if self.training_mode == "self_supervised":
-            #return self.x_data[index], self.y_data[index], self.aug1[index], self.aug2[index]
-            return self.x_data[index], self.y_data[index], self.aug1[index], self.aug3[index], self.aug2[index]
+            return self.x_data[index], self.y_data[index], self.aug1[index], self.aug2[index]
         else:
-            return self.x_data[index], self.y_data[index], self.x_data[index], self.x_data[index], self.x_data[index]
+            return self.x_data[index], self.y_data[index], self.x_data[index], self.x_data[index]
 
     def __len__(self):
         return self.len
