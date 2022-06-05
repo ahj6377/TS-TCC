@@ -6,8 +6,8 @@ from datetime import datetime
 import torch.nn as nn
 import argparse
 from utils import _logger, set_requires_grad
-from dataloader.dataloader import data_generator
-from trainer.trainer import Trainer, model_evaluate
+from dataloader.dataloader import data_generator, data_generator_three
+from trainer.trainer import Trainer, model_evaluate, Trainer_three, model_evaluate_three
 from models.TC import TC
 from utils import _calc_metrics, copy_Files
 from models.model import base_Model
@@ -16,7 +16,7 @@ from models.model import base_Model
 
 averagecalc = []
 for i in range(3):
-    for data in ['sleepEDF']:
+    for data in ['Epilepsy']:
         run_num = 'run1' if data == 'sleepEDF' else 'run2'
         for mode in ['self_supervised']:
             # Args selections
@@ -85,10 +85,6 @@ for i in range(3):
             logger.debug(f'Mode:    {training_mode}')
             logger.debug("=" * 45)
 
-            # Load datasets
-            data_path = f"/root/TS-TCC/data/{data_type}"
-            train_dl, valid_dl, test_dl = data_generator(data_path, configs, training_mode)
-            logger.debug("Data loaded ...")
 
             # Load Model
             model = base_Model(configs).to(device)
@@ -142,25 +138,52 @@ for i in range(3):
                             del model_dict[i]
                 set_requires_grad(model, model_dict, requires_grad=False)  # Freeze everything except last layer.
 
-
-
             model_optimizer = torch.optim.Adam(model.parameters(), lr=configs.lr, betas=(configs.beta1, configs.beta2), weight_decay=3e-4)
             temporal_contr_optimizer = torch.optim.Adam(temporal_contr_model.parameters(), lr=configs.lr, betas=(configs.beta1, configs.beta2), weight_decay=3e-4)
 
-            if training_mode == "self_supervised":  # to do it only once
-                copy_Files(os.path.join(logs_save_dir, experiment_description, run_description), data_type)
-            criterion = nn.CrossEntropyLoss()
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(model_optimizer, mode = 'min')
-            #scheduler = torch.optim.lr_scheduler.MultiStepLR(model_optimizer,milestones=[12,24,36], gamma = 0.9)
-            # Trainer
-            lossNacc = Trainer(model, criterion, scheduler, temporal_contr_model, model_optimizer, temporal_contr_optimizer, train_dl, valid_dl, test_dl, device, logger, configs, experiment_log_dir, training_mode)
-            averagecalc.append(lossNacc)
-            if training_mode != "self_supervised":
-                # Testing
-                outs = model_evaluate(model, temporal_contr_model, test_dl, device, training_mode)
-                total_loss, total_acc, pred_labels, true_labels = outs
-                _calc_metrics(pred_labels, true_labels, experiment_log_dir, args.home_path)
 
-            logger.debug(f"Training time is : {datetime.now()-start_time}")
+            #if you want three model calculating loss, normal_mode = False
+            normal_mode = True
+            if normal_mode:
+                # Load datasets
+                data_path = f"/root/TS-TCC/data/{data_type}"
+                train_dl, valid_dl, test_dl = data_generator(data_path, configs, training_mode)
+                logger.debug("Data loaded ...")
+
+                if training_mode == "self_supervised":  # to do it only once
+                    copy_Files(os.path.join(logs_save_dir, experiment_description, run_description), data_type)
+
+                # Trainer
+                lossNacc = Trainer(model, temporal_contr_model, model_optimizer, temporal_contr_optimizer, train_dl, valid_dl, test_dl, device, logger, configs, experiment_log_dir, training_mode)
+                averagecalc.append(lossNacc)
+
+                if training_mode != "self_supervised":
+                    # Testing
+                    outs = model_evaluate(model, temporal_contr_model, test_dl, device, training_mode)
+                    total_loss, total_acc, pred_labels, true_labels = outs
+                    _calc_metrics(pred_labels, true_labels, experiment_log_dir, args.home_path)
+
+                logger.debug(f"Training time is : {datetime.now()-start_time}")
+            else:
+                # Load datasets
+                data_path = f"/root/TS-TCC/data/{data_type}"
+                train_dl, valid_dl, test_dl = data_generator_three(data_path, configs, training_mode)
+                logger.debug("Data loaded ...")
+
+                if training_mode == "self_supervised":  # to do it only once
+                    copy_Files(os.path.join(logs_save_dir, experiment_description, run_description), data_type)
+
+                # Trainer
+                lossNacc = Trainer_three(model, temporal_contr_model, model_optimizer, temporal_contr_optimizer, train_dl, valid_dl, test_dl, device, logger, configs, experiment_log_dir, training_mode)
+                averagecalc.append(lossNacc)
+
+                if training_mode != "self_supervised":
+                    # Testing
+                    outs = model_evaluate_three(model, temporal_contr_model, test_dl, device, training_mode)
+                    total_loss, total_acc, pred_labels, true_labels = outs
+                    _calc_metrics(pred_labels, true_labels, experiment_log_dir, args.home_path)
+
+                logger.debug(f"Training time is : {datetime.now()-start_time}")
+
 
 print(averagecalc)

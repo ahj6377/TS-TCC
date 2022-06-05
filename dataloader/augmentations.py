@@ -1,9 +1,17 @@
+from copy import deepcopy
 import numpy as np
 import torch
 import random
 
-
+    
 def DataTransform(sample, config):
+
+    weak_aug = scaling(sample, config.augmentation.jitter_scale_ratio)
+    strong_aug = jitter(permutation(sample, max_segments=config.augmentation.max_seg), config.augmentation.jitter_ratio)
+    return weak_aug, strong_aug
+
+
+def DataTransform_three(sample, config):
     '''
     If you want to change augmentation method, you should change function(scaling and jitter).
     - Default
@@ -21,17 +29,15 @@ def DataTransform(sample, config):
     - Filp(reverse ver.)
         - scaling_filp_reverse
     + Cropping in this function. If you use this, use the comments section at the bottom. It may take some time to execute this.
-
-    + Filp(negative ver.) in this function. If you use this, use the comments section at the bottom.
+    + Filp(negative ver.), Shuffle, Sampling, Spike in this function. If you use this, use the comments section at the bottom.
     '''
     weak_aug = scaling(sample, config.augmentation.jitter_scale_ratio)
     middle_aug = scaling_mul(sample, config.augmentation.jitter_scale_ratio)
     strong_aug = jitter(permutation(sample, max_segments=config.augmentation.max_seg), config.augmentation.jitter_ratio)
 
-    """
     # <Cropping in strong_aug>
-    
-    N = len(middle_aug)
+    '''
+    N = len(strong_aug)
     mi = random.randrange(0, N)
     ma = random.randrange(0, N)
     if mi > ma:
@@ -39,34 +45,92 @@ def DataTransform(sample, config):
 
     # Cropping
     for i in range(mi, ma+1):
-        for j in range(len(middle_aug[i])):
-            for k in range(len(middle_aug[i][j])):
-                middle_aug[i][j][k] = 0
-    print('augmentationed - cropping')
-    ##
-    """
+        for j in range(len(strong_aug[i])):
+            for k in range(len(strong_aug[i][j])):
+                strong_aug[i][j][k] = 0
+    '''
+
     # <Flip negative version>
+    # Warning: Very slow..
     for i in range(len(sample)):
         for j in range(len(sample[i])):
             for k in range(len(sample[i][j])):
                 middle_aug[i][j][k] = -middle_aug[i][j][k]
-    print('augmentationed - flip')
-    ##
+               
+    
+    # Shuffle
+    '''
+    for i in range(len(sample)):
+        for j in range(len(sample[i])):
+            l = len(sample[i][j])//2
+            for k in range(l):
+                # swap
+                weak_aug[i][j][k], weak_aug[i][j][l] = weak_aug[i][j][l], weak_aug[i][j][k]
+                l += 1
+    '''
 
-    #return weak_aug, strong_aug
+    # Sampling
+    '''
+    weak_aug_down = deepcopy(weak_aug)
+    for i in range(len(sample)):
+        for j in range(len(sample[i])):
+            # Down-Sampling
+            for k in range(0, len(sample[i][j]), 2):
+                weak_aug_down[i][j][k] = max(weak_aug[i][j][k], weak_aug[i][j][k+1])
+            # Up-Sampling
+            for k in range(1, len(sample[i][j])-1, 2):
+                weak_aug_down[i][j][k] = (weak_aug_down[i][j][k-1] + weak_aug_down[i][j][k+1])/2
+    weak_aug = np.array(weak_aug_down).reshape(len(sample), len(sample[0]), len(sample[0][0]))
+    '''
+
+    # Spike
+    '''
+    for i in range(len(sample)):
+        for j in range(len(sample[i])):
+            sub_max = max(weak_aug[i][j])
+            sub_min = min(weak_aug[i][j])
+            sub_avg = sum(weak_aug[i][j]) / len(sample[i][j])
+            for k in range(len(sample[i][j])):
+                if (k+1) % 16 == 0:
+                    if weak_aug[i][j][k] > 0:
+                        temp = random.uniform(sub_avg, sub_max)
+                        weak_aug[i][j][k] += temp
+                    else:
+                        temp = random.uniform(sub_avg, -sub_min)
+                        weak_aug[i][j][k] -= temp
+    '''
+
+    # Step-like Trand
+    '''
+    for i in range(len(sample)):
+        for j in range(len(sample[i])):
+            ran = len(sample[i][j]) // 10
+            
+            num_init = sum(weak_aug[i][j]) / len(weak_aug[i][j])
+            num = 0
+            cnt = 0
+            for k in range(len(sample[i][j])):
+                weak_aug[i][j][k] += (num_init * num)
+
+                cnt += 1
+                if cnt == ran:
+                    cnt = 0
+                    num += 1
+    '''
+
     return weak_aug, middle_aug, strong_aug
+
 
 '''
 Default
 '''
 # strong augmentation(default)
 def jitter(x, sigma=0.8):
-    # https://arxiv.org/pdf/1706.00527.pdf
+    # https://arxiv.org/pdf/1706.00527.pdfs
     return x + np.random.normal(loc=0., scale=sigma, size=x.shape)
 
 # weak augmentation(default)
 def scaling(x, sigma=1.1):
-    
     # https://arxiv.org/pdf/1706.00527.pdf
     factor = np.random.normal(loc=2., scale=sigma, size=(x.shape[0], x.shape[2]))
     ai = []
