@@ -11,6 +11,7 @@ class Config(object):
         self.stride = 3
         self.features_len = 127
 
+        
         # training configs
         self.num_epoch = 40
 

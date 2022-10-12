@@ -68,11 +68,11 @@ def model_train(model, temporal_contr_model, model_optimizer, temp_cont_optimize
             features1 = F.normalize(features1, dim=1)
             features2 = F.normalize(features2, dim=1)
 
+
             temp_cont_loss1, temp_cont_lstm_feat1 = temporal_contr_model(features1, features2)
             temp_cont_loss2, temp_cont_lstm_feat2 = temporal_contr_model(features2, features1)
             
 
-            
 
             # normalize projection feature vectors
             zis = temp_cont_lstm_feat1 
@@ -83,6 +83,7 @@ def model_train(model, temporal_contr_model, model_optimizer, temp_cont_optimize
 
         # compute loss
         if training_mode == "self_supervised":
+
             lambda1 = 0
             lambda2 = 0.7
             lambda3 = 1.0
@@ -90,10 +91,11 @@ def model_train(model, temporal_contr_model, model_optimizer, temp_cont_optimize
             nt_xent_criterion = NTXentLoss(device, config.batch_size, config.Context_Cont.temperature,
                                            config.Context_Cont.use_cosine_similarity)
             loss = (temp_cont_loss1 + temp_cont_loss2) * lambda1 +  nt_xent_criterion(zis, zjs) * lambda2 + h_loss*lambda3 + s_loss*lambda4
+
             
         else: # supervised training or fine tuining
             predictions, features = output
-            loss = criterion(predictions, labels)
+            loss =  criterion(predictions, labels)
             total_acc.append(labels.eq(predictions.detach().argmax(dim=1)).float().mean())
 
         total_loss.append(loss.item())
