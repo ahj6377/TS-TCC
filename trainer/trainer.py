@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import random
+import gc
 from models.loss import NTXentLoss
 from models.losses import hierarchical_contrastive_loss,instance_contrastive_loss,temporal_contrastive_loss
 from models.sloss import seasonal_loss
@@ -52,26 +53,41 @@ def model_train(model, temporal_contr_model, model_optimizer, temp_cont_optimize
 
     for batch_idx, (data, labels, aug1, aug2) in enumerate(train_loader):
         # send to device
+        torch.cuda.empty_cache()
+        gc.collect()
         data, labels = data.float().to(device), labels.long().to(device)
         aug1, aug2 = aug1.float().to(device), aug2.float().to(device)
 
         # optimizer
         model_optimizer.zero_grad()
         temp_cont_optimizer.zero_grad()
-
+        coef1 = 0.3
+        coef2 = 0.3
+        coef3 = 0.001
+        coef4 = 0.001
         if training_mode == "self_supervised":
-            predictions1, features1, = model(aug1)
-            predictions2, features2  = model(aug2)
-            s_loss = seasonal_loss(features1,features2)
-            h_loss = hierarchical_contrastive_loss(features1,features2)
+            predictions1, features1,f10,f12 = model(aug1)
+            predictions2, features2,f20,f22 = model(aug2)
+
+            f10 = F.normalize(f10,dim = 1)
+            f20 = F.normalize(f20,dim = 1)
+            f12 = F.normalize(f12,dim = 1)
+            f22 = F.normalize(f22,dim = 1)
+            temp_cont_loss1_0, temp_cont_lstm_feat1_0 = temporal_contr_model(f10,f20)
+            temp_cont_loss2_0, temp_cont_lstm_feat2_0 = temporal_contr_model(f20,f10)
+            temp_cont_loss1_2, temp_cont_lstm_feat1_2 = temporal_contr_model(f12,f22)
+            temp_cont_loss2_2, temp_cont_lstm_feat2_2 = temporal_contr_model(f22,f12)
             # normalize projection feature vectors
             features1 = F.normalize(features1, dim=1)
             features2 = F.normalize(features2, dim=1)
-
-
-            temp_cont_loss1, temp_cont_lstm_feat1 = temporal_contr_model(features1, features2)
+            s_loss = 0.4 * seasonal_loss(features1,features2) + 0.3 * seasonal_loss(f12,f22) + 0.2 * seasonal_loss(f10,f20)
+            h_loss = 0.4 * hierarchical_contrastive_loss(features1,features2) + 0.3 * hierarchical_contrastive_loss(f10,f20) + 0.2 * hierarchical_contrastive_loss(f12,f22)
+            temp_cont_loss1, temp_cont_lstm_feat1= temporal_contr_model(features1, features2)
             temp_cont_loss2, temp_cont_lstm_feat2 = temporal_contr_model(features2, features1)
-            
+
+            add_temp_loss = coef1 * (temp_cont_loss1_0 + temp_cont_loss2_0) + coef2 * (temp_cont_loss2_2 + temp_cont_loss1_2) 
+
+            #h_loss = l1+l2
 
 
             # normalize projection feature vectors
@@ -83,19 +99,18 @@ def model_train(model, temporal_contr_model, model_optimizer, temp_cont_optimize
 
         # compute loss
         if training_mode == "self_supervised":
-
-            lambda1 = 0
-            lambda2 = 0.7
-            lambda3 = 1.0
+            lambda1 = 0.4
+            lambda2 = 0.4
+            #lambda3 = 0.0
             lambda4 = 0.2
+
             nt_xent_criterion = NTXentLoss(device, config.batch_size, config.Context_Cont.temperature,
                                            config.Context_Cont.use_cosine_similarity)
-            loss = (temp_cont_loss1 + temp_cont_loss2) * lambda1 +  nt_xent_criterion(zis, zjs) * lambda2 + h_loss*lambda3 + s_loss*lambda4
-
-            
-        else: # supervised training or fine tuining
-            predictions, features = output
-            loss =  criterion(predictions, labels)
+            add_context_loss = coef3*(nt_xent_criterion(temp_cont_lstm_feat1_0,temp_cont_lstm_feat2_0)) + coef4*(nt_xent_criterion(temp_cont_lstm_feat1_2,temp_cont_lstm_feat2_2))
+            loss = (temp_cont_loss1 + temp_cont_loss2) * lambda1 +  nt_xent_criterion(zis, zjs) * lambda2 + add_temp_loss 
+        else:
+            predictions, features,_,_ = output
+            loss = criterion(predictions, labels)
             total_acc.append(labels.eq(predictions.detach().argmax(dim=1)).float().mean())
 
         total_loss.append(loss.item())
@@ -134,7 +149,7 @@ def model_evaluate(model, temporal_contr_model, test_dl, device, training_mode):
 
             # compute loss
             if training_mode != "self_supervised":
-                predictions, features = output
+                predictions, features,_,_ = output
                 loss = criterion(predictions, labels)
                 total_acc.append(labels.eq(predictions.detach().argmax(dim=1)).float().mean())
                 total_loss.append(loss.item())
@@ -154,3 +169,8 @@ def model_evaluate(model, temporal_contr_model, test_dl, device, training_mode):
     else:
         total_acc = torch.tensor(total_acc).mean()  # average acc
     return total_loss, total_acc, outs, trgs
+
+
+
+#conda activate pytorch1.12.1_p38
+#cd /data/a2016104132/repos/TS-TCC

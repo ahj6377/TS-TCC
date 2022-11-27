@@ -3,7 +3,7 @@ class Config(object):
     def __init__(self):
         # model configs
         self.input_channels = 1
-        self.final_out_channels = 128
+        self.final_out_channels = 32
         self.num_classes = 5
         self.dropout = 0.35
 
@@ -11,9 +11,8 @@ class Config(object):
         self.stride = 3
         self.features_len = 127
 
-        
         # training configs
-        self.num_epoch = 40
+        self.num_epoch = 50
 
 
         # optimizer parameters

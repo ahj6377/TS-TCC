@@ -43,4 +43,4 @@ class Context_Cont_configs(object):
 class TC(object):
     def __init__(self):
         self.hidden_dim = 100
-        self.timesteps = 4
+        self.timesteps = 6
